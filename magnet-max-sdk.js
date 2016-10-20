@@ -5786,6 +5786,8 @@ Max.Channel = function(channelObj) {
 
     this.channelId = channelObj.topicId || this.getChannelId();
     delete this.topicId;
+//console.log('my test 5789', this);
+top.TTT = this;
 
     return this;
 };
@@ -6003,7 +6005,7 @@ Max.Channel.getAllSubscriptions = function(subscriptionOnly) {
     setTimeout(function() {
         if (!mCurrentUser) return def.reject(Max.Error.SESSION_EXPIRED);
         if (!mXMPPConnection || !mXMPPConnection.connected) return def.reject(Max.Error.NOT_CONNECTED);
-
+console.log('Max.Channel.getAllSubscriptions 6008 ');
         var payload = $iq({to: 'pubsub.mmx', from: mCurrentUser.jid, type: 'get', id: msgId})
             .c('pubsub', {xmlns: 'http://jabber.org/protocol/pubsub'})
             .c('subscriptions');
@@ -6011,6 +6013,9 @@ Max.Channel.getAllSubscriptions = function(subscriptionOnly) {
         mXMPPConnection.addHandler(function(msg) {
             var json = x2js.xml2json(msg);
             var channels = [];
+console.log('Max.Channel.getAllSubscriptions 6016 ', msg);
+
+top.PPP = json;
 
             if (!json.pubsub || !json.pubsub.subscriptions || !json.pubsub.subscriptions.subscription)
                 return def.resolve(channels);
@@ -6053,7 +6058,8 @@ Max.Channel.getSummary = function(channels) {
     for (var i=0;i<channels.length;++i)
         topicNodes.push({
             userId: channels[i].userId,
-            topicName: channels[i].name
+//            topicName: channels[i].name
+            topicId: channels[i].channelId
         });
 
     setTimeout(function() {
@@ -6160,12 +6166,16 @@ Max.Channel.getChannelSummary = function(channelOrChannels, subscriberCount, mes
     if (!Max.Utils.isArray(channelOrChannels))
         channelOrChannels = [channelOrChannels];
 
-    for (var i=0;i<channelOrChannels.length;++i)
-        channelIds.push({
-            channelName: channelOrChannels[i].name,
-            userId: channelOrChannels[i].userId,
-            privateChannel: !channelOrChannels[i].isPublic
-        });
+    for (var i=0;i<channelOrChannels.length;++i) {
+        channelIds.push(
+            channelOrChannels[i].channelId
+        );
+//        channelIds.push({
+//            channelName: channelOrChannels[i].name,
+//            userId: channelOrChannels[i].userId,
+//            privateChannel: !channelOrChannels[i].isPublic
+//        });
+    }
 
     setTimeout(function() {
         if (!mCurrentUser) return def.reject(Max.Error.SESSION_EXPIRED);
@@ -6174,9 +6184,11 @@ Max.Channel.getChannelSummary = function(channelOrChannels, subscriberCount, mes
             method: 'POST',
             url: '/com.magnet.server/channel/summary',
             data: {
-                channelIds: channelIds,
-                numOfSubcribers: subscriberCount,
-                numOfMessages: messageCount
+                requestUserId: mCurrentUser.userId,
+                appId: Max.App.appId,
+                channelIds: channelIds //,
+//                numOfSubcribers: subscriberCount,
+//                numOfMessages: messageCount
             }
         }, function (data, details) {
             var i, j;
@@ -6190,7 +6202,7 @@ Max.Channel.getChannelSummary = function(channelOrChannels, subscriberCount, mes
                             };
                         data[i].owner = new Max.User(data[i].owner);
                     }
-                    data[i].channel = Max.ChannelHelper.matchChannel(channelOrChannels, data[i].channelName, data[i].userId);
+                    data[i].channel = data[i]; //Max.ChannelHelper.matchChannel(channelOrChannels, data[i].channelName, data[i].userId);
                     data[i].messages = Max.ChannelHelper.parseMessageList(data[i].messages, data[i].channel);
                     data[i].subscribers = Max.Utils.objToObjAry(data[i].subscribers);
                     for (j = 0; j < data[i].subscribers.length; ++j)
@@ -7178,7 +7190,7 @@ Max.ChannelHelper = {
         return ary;
     },
     /**
-     * Get matching channel.
+     * Get matching channel. data[i].channel = Max.ChannelHelper.matchChannel(channelOrChannels, data[i].channelName, data[i].userId);
      */
     matchChannel: function(channels, matchName, matchOwner) {
         var channel;
