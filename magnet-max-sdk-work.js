@@ -6168,7 +6168,7 @@ Max.Channel.getChannelSummary = function(channelOrChannels, subscriberCount, mes
             channelOrChannels[i].channelId
         );
     }
-
+    
     setTimeout(function() {
         if (!mCurrentUser) return def.reject(Max.Error.SESSION_EXPIRED);
 

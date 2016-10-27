@@ -5730,7 +5730,6 @@ Max.ChecklistHelper = {
  * @property {Date} [mutedUntil] The date when the channel will become unmuted, or null if it is not muted.
  */
 Max.Channel = function(channelObj) {
-    var channelAry;
     this.isMuted = false;
     this.mutedUntil = null;
     this.isSubscribed = false;
@@ -5738,6 +5737,7 @@ Max.Channel = function(channelObj) {
     channelObj.ownerUserId = channelObj.ownerUserId || channelObj.ownerUserID;
 
     if (channelObj.topicName) {
+        channelObj.name = channelObj.topicName;
         delete channelObj.topicName;
     }
     if (channelObj.creator && channelObj.creator.indexOf('%') != -1)
@@ -5785,8 +5785,6 @@ Max.Channel = function(channelObj) {
     Max.Utils.mergeObj(this, channelObj);
 
     this.channelId = channelObj.topicId || this.getChannelId();
-    channelAry = (this.channelId || '').split('#');
-    this.name = channelAry[1] || channelAry[0];
     delete this.topicId;
 
     return this;
@@ -5983,7 +5981,6 @@ Max.Channel.create = function(channelObj) {
             delete channelObj.channelName;
             channelObj.creator = mCurrentUser.userId;
             channelObj.isSubscribed = true;
-            channelObj.channelId = (data || {}).channelId;
             channelObj.name += '';
 
             def.resolve(new Max.Channel(channelObj), details);
@@ -6056,7 +6053,7 @@ Max.Channel.getSummary = function(channels) {
     for (var i=0;i<channels.length;++i)
         topicNodes.push({
             userId: channels[i].userId,
-            topicId: channels[i].channelId
+            topicName: channels[i].name
         });
 
     setTimeout(function() {
@@ -6082,7 +6079,7 @@ Max.Channel.getSummary = function(channels) {
 
             for (var i=0;i<payload.length;++i) {
               t = new Max.Channel({
-                name: payload[i].topicNode.topicName || payload[i].topicNode.displayName,
+                name: payload[i].topicNode.topicName,
                 userId: payload[i].topicNode.userId
               });
               channelIds[t.channelId] = payload[i].lastPubTime;
@@ -6163,11 +6160,12 @@ Max.Channel.getChannelSummary = function(channelOrChannels, subscriberCount, mes
     if (!Max.Utils.isArray(channelOrChannels))
         channelOrChannels = [channelOrChannels];
 
-    for (var i=0;i<channelOrChannels.length;++i) {
-        channelIds.push(
-            channelOrChannels[i].channelId
-        );
-    }
+    for (var i=0;i<channelOrChannels.length;++i)
+        channelIds.push({
+            channelName: channelOrChannels[i].name,
+            userId: channelOrChannels[i].userId,
+            privateChannel: !channelOrChannels[i].isPublic
+        });
 
     setTimeout(function() {
         if (!mCurrentUser) return def.reject(Max.Error.SESSION_EXPIRED);
@@ -6176,9 +6174,9 @@ Max.Channel.getChannelSummary = function(channelOrChannels, subscriberCount, mes
             method: 'POST',
             url: '/com.magnet.server/channel/summary',
             data: {
-                requestUserId: mCurrentUser.userId,
-                appId: Max.App.appId,
-                channelIds: channelIds
+                channelIds: channelIds,
+                numOfSubcribers: subscriberCount,
+                numOfMessages: messageCount
             }
         }, function (data, details) {
             var i, j;
@@ -6192,7 +6190,7 @@ Max.Channel.getChannelSummary = function(channelOrChannels, subscriberCount, mes
                             };
                         data[i].owner = new Max.User(data[i].owner);
                     }
-                    data[i].channel = Max.ChannelHelper.matchChannel(channelOrChannels, data[i].displayName, data[i].userId);
+                    data[i].channel = Max.ChannelHelper.matchChannel(channelOrChannels, data[i].channelName, data[i].userId);
                     data[i].messages = Max.ChannelHelper.parseMessageList(data[i].messages, data[i].channel);
                     data[i].subscribers = Max.Utils.objToObjAry(data[i].subscribers);
                     for (j = 0; j < data[i].subscribers.length; ++j)
@@ -6255,7 +6253,8 @@ Max.Channel.getChannel = function(channelName, userId) {
         if (!mXMPPConnection || !mXMPPConnection.connected) return def.reject(Max.Error.NOT_CONNECTED);
 
         var mmxMeta = {
-            topicId: userId + '#' + channelName
+            userId: userId,
+            topicName: channelName
         };
 
         mmxMeta = JSON.stringify(mmxMeta);
@@ -6306,7 +6305,8 @@ Max.Channel.getChannels = function(channelOrChannels, allSubscribed) {
         var mmxMeta = [];
         for (var i=0;i<channelOrChannels.length;++i)
             mmxMeta.push({
-                topicId: channelOrChannels[i].channelId
+                topicName: channelOrChannels[i].name,
+                userId: channelOrChannels[i].userId
             });
 
         mmxMeta = JSON.stringify(mmxMeta);
@@ -6518,7 +6518,8 @@ Max.Channel.prototype.getAllSubscribers = function(limit, offset) {
         if (!mXMPPConnection || !mXMPPConnection.connected) return def.reject(Max.Error.NOT_CONNECTED);
 
         var mmxMeta = {
-            topicId: self.channelId,
+            userId: self.userId,     // null for global topic, or a user topic under a user ID
+            topicName: self.name,    // without /appID/* or /appID/userID
             limit: limit,            // -1 for unlimited, or > 0
             offset: offset           // offset starting from zero
         };
@@ -6575,7 +6576,7 @@ Max.Channel.prototype.addSubscribers = function(subscribers) {
 
         Max.Request({
             method: 'POST',
-            url: '/com.magnet.server/channel/'+encodeURIComponent(self.getChannelId())+'/subscribers/add',
+            url: '/com.magnet.server/channel/'+self.name+'/subscribers/add',
             data: {
                 privateChannel: !self.isPublic,
                 subscribers: subscriberlist
@@ -6642,7 +6643,8 @@ Max.Channel.prototype.subscribe = function() {
         if (!mXMPPConnection || !mXMPPConnection.connected) return def.reject(Max.Error.NOT_CONNECTED);
 
         var mmxMeta = {
-            topicId: self.channelId,
+            userId: self.userId,     // null for global topic, or a user topic under a user ID
+            topicName: self.name,    // without /appID/* or /appID/userID
             devId: null,             // null for any devices, or a specific device
             errorOnDup: false        // true to report error if duplicated subscription, false (default) to not report error
         };
@@ -6683,7 +6685,8 @@ Max.Channel.prototype.unsubscribe = function() {
         if (!mXMPPConnection || !mXMPPConnection.connected) return def.reject(Max.Error.NOT_CONNECTED);
 
         var mmxMeta = {
-            topicId: self.channelId,
+            userId: self.userId,        // null for global topic, or a user topic under a user ID
+            topicName: self.name,       // without /appID/* or /appID/userID
             subscriptionId: null        // | a-subscription-ID  // null for all subscriptions to the topic
         };
 
@@ -6815,7 +6818,8 @@ Max.Channel.prototype.getMessages = function(startDate, endDate, limit, offset, 
         if (!mXMPPConnection || !mXMPPConnection.connected) return def.reject(Max.Error.NOT_CONNECTED);
 
         var mmxMeta = {
-            topicId: self.channelId,
+            userId: self.userId,         // null for global topic, or a user topic under a user ID
+            topicName: self.name,        // without /appID/* or /appID/userID
             options: {
                 subscriptionId: null,    // optional (if null, any subscriptions to the topic will be assumed)
                 since: startDate,        // optional (inclusive, 2015-03-06T13:23:45.783Z)
@@ -6866,7 +6870,8 @@ Max.Channel.prototype.getTags = function() {
         if (!mXMPPConnection || !mXMPPConnection.connected) return def.reject(Max.Error.NOT_CONNECTED);
 
         var mmxMeta = {
-            topicId: self.channelId
+            userId: self.userId,
+            topicName: self.name
         };
 
         mmxMeta = JSON.stringify(mmxMeta);
@@ -6909,7 +6914,8 @@ Max.Channel.prototype.setTags = function(tags) {
         if (!tags || !Max.Utils.isArray(tags)) return def.reject(Max.Error.INVALID_TAGS);
 
         var mmxMeta = {
-            topicId: self.channelId,
+            userId: self.userId,
+            topicName: self.name,
             tags: tags
         };
 
@@ -7118,8 +7124,7 @@ Max.Channel.prototype.getChannelName = function() {
  * @returns {string} The formal channelId.
  */
 Max.Channel.prototype.getChannelId = function() {
-//    return (this.isPublic === true ? (this.name+'') : (this.userId + '#' + this.name)).toLowerCase();
-    return this.channelId || (this.userId + '#' + this.name).toLowerCase();
+    return (this.isPublic === true ? (this.name+'') : (this.userId + '#' + this.name)).toLowerCase();
 };
 
 Max.Channel.prototype.getNodePath = function() {
@@ -7179,7 +7184,7 @@ Max.ChannelHelper = {
         var channel;
         for (var i=0;i<channels.length;++i) {
             if (!channels[i].userId) delete channels[i].userId;
-            if ((channels[i].displayName || '').toLowerCase() === (matchName || '').toLowerCase() && channels[i].userId == matchOwner) {
+            if (channels[i].name.toLowerCase() === matchName.toLowerCase() && channels[i].userId == matchOwner) {
                 channel = channels[i];
                 break;
             }
