@@ -3055,7 +3055,7 @@ Max.User.passwordReset = function(userObj) {
     if (Max.App.catCredentials || Max.App.hatCredentials)
         auth = {
             'Authorization': 'Bearer '
-            + (Max.App.catCredentials || Max.App.hatCredentials || {}).access_token
+            + (Max.App.hatCredentials || Max.App.catCredentials || {}).access_token
         };
 
     var def = Max.Request({
@@ -5730,14 +5730,14 @@ Max.ChecklistHelper = {
  * @property {Date} [mutedUntil] The date when the channel will become unmuted, or null if it is not muted.
  */
 Max.Channel = function(channelObj) {
+    var channelAry;
     this.isMuted = false;
     this.mutedUntil = null;
     this.isSubscribed = false;
-console.log('my test 5736', channelObj);
+
     channelObj.ownerUserId = channelObj.ownerUserId || channelObj.ownerUserID;
 
     if (channelObj.topicName) {
-        channelObj.name = channelObj.topicName;
         delete channelObj.topicName;
     }
     if (channelObj.creator && channelObj.creator.indexOf('%') != -1)
@@ -5785,9 +5785,9 @@ console.log('my test 5736', channelObj);
     Max.Utils.mergeObj(this, channelObj);
 
     this.channelId = channelObj.topicId || this.getChannelId();
+    channelAry = (this.channelId || '').split('#');
+    this.name = channelAry[1] || channelAry[0];
     delete this.topicId;
-console.log('my test 5789', this);
-top.TTT = this;
 
     return this;
 };
@@ -5983,6 +5983,7 @@ Max.Channel.create = function(channelObj) {
             delete channelObj.channelName;
             channelObj.creator = mCurrentUser.userId;
             channelObj.isSubscribed = true;
+            channelObj.channelId = (data || {}).channelId;
             channelObj.name += '';
 
             def.resolve(new Max.Channel(channelObj), details);
@@ -6005,7 +6006,7 @@ Max.Channel.getAllSubscriptions = function(subscriptionOnly) {
     setTimeout(function() {
         if (!mCurrentUser) return def.reject(Max.Error.SESSION_EXPIRED);
         if (!mXMPPConnection || !mXMPPConnection.connected) return def.reject(Max.Error.NOT_CONNECTED);
-console.log('Max.Channel.getAllSubscriptions 6008 ');
+
         var payload = $iq({to: 'pubsub.mmx', from: mCurrentUser.jid, type: 'get', id: msgId})
             .c('pubsub', {xmlns: 'http://jabber.org/protocol/pubsub'})
             .c('subscriptions');
@@ -6013,9 +6014,6 @@ console.log('Max.Channel.getAllSubscriptions 6008 ');
         mXMPPConnection.addHandler(function(msg) {
             var json = x2js.xml2json(msg);
             var channels = [];
-console.log('Max.Channel.getAllSubscriptions 6016 ', msg);
-
-top.PPP = json;
 
             if (!json.pubsub || !json.pubsub.subscriptions || !json.pubsub.subscriptions.subscription)
                 return def.resolve(channels);
@@ -6058,7 +6056,7 @@ Max.Channel.getSummary = function(channels) {
     for (var i=0;i<channels.length;++i)
         topicNodes.push({
             userId: channels[i].userId,
-            topicName: channels[i].name
+            topicId: channels[i].channelId
         });
 
     setTimeout(function() {
@@ -6084,7 +6082,7 @@ Max.Channel.getSummary = function(channels) {
 
             for (var i=0;i<payload.length;++i) {
               t = new Max.Channel({
-                name: payload[i].topicNode.topicName,
+                name: payload[i].topicNode.topicName || payload[i].topicNode.displayName,
                 userId: payload[i].topicNode.userId
               });
               channelIds[t.channelId] = payload[i].lastPubTime;
@@ -6165,12 +6163,11 @@ Max.Channel.getChannelSummary = function(channelOrChannels, subscriberCount, mes
     if (!Max.Utils.isArray(channelOrChannels))
         channelOrChannels = [channelOrChannels];
 
-    for (var i=0;i<channelOrChannels.length;++i)
-        channelIds.push({
-            channelName: channelOrChannels[i].name,
-            userId: channelOrChannels[i].userId,
-            privateChannel: !channelOrChannels[i].isPublic
-        });
+    for (var i=0;i<channelOrChannels.length;++i) {
+        channelIds.push(
+            channelOrChannels[i].channelId
+        );
+    }
 
     setTimeout(function() {
         if (!mCurrentUser) return def.reject(Max.Error.SESSION_EXPIRED);
@@ -6179,9 +6176,9 @@ Max.Channel.getChannelSummary = function(channelOrChannels, subscriberCount, mes
             method: 'POST',
             url: '/com.magnet.server/channel/summary',
             data: {
-                channelIds: channelIds,
-                numOfSubcribers: subscriberCount,
-                numOfMessages: messageCount
+                requestUserId: mCurrentUser.userId,
+                appId: Max.App.appId,
+                channelIds: channelIds
             }
         }, function (data, details) {
             var i, j;
@@ -6195,7 +6192,7 @@ Max.Channel.getChannelSummary = function(channelOrChannels, subscriberCount, mes
                             };
                         data[i].owner = new Max.User(data[i].owner);
                     }
-                    data[i].channel = Max.ChannelHelper.matchChannel(channelOrChannels, data[i].channelName, data[i].userId);
+                    data[i].channel = Max.ChannelHelper.matchChannel(channelOrChannels, data[i].displayName, data[i].userId);
                     data[i].messages = Max.ChannelHelper.parseMessageList(data[i].messages, data[i].channel);
                     data[i].subscribers = Max.Utils.objToObjAry(data[i].subscribers);
                     for (j = 0; j < data[i].subscribers.length; ++j)
@@ -6258,8 +6255,7 @@ Max.Channel.getChannel = function(channelName, userId) {
         if (!mXMPPConnection || !mXMPPConnection.connected) return def.reject(Max.Error.NOT_CONNECTED);
 
         var mmxMeta = {
-            userId: userId,
-            topicName: channelName
+            topicId: userId + '#' + channelName
         };
 
         mmxMeta = JSON.stringify(mmxMeta);
@@ -6310,8 +6306,7 @@ Max.Channel.getChannels = function(channelOrChannels, allSubscribed) {
         var mmxMeta = [];
         for (var i=0;i<channelOrChannels.length;++i)
             mmxMeta.push({
-                topicName: channelOrChannels[i].name,
-                userId: channelOrChannels[i].userId
+                topicId: channelOrChannels[i].channelId
             });
 
         mmxMeta = JSON.stringify(mmxMeta);
@@ -6523,8 +6518,7 @@ Max.Channel.prototype.getAllSubscribers = function(limit, offset) {
         if (!mXMPPConnection || !mXMPPConnection.connected) return def.reject(Max.Error.NOT_CONNECTED);
 
         var mmxMeta = {
-            userId: self.userId,     // null for global topic, or a user topic under a user ID
-            topicName: self.name,    // without /appID/* or /appID/userID
+            topicId: self.channelId,
             limit: limit,            // -1 for unlimited, or > 0
             offset: offset           // offset starting from zero
         };
@@ -6581,7 +6575,7 @@ Max.Channel.prototype.addSubscribers = function(subscribers) {
 
         Max.Request({
             method: 'POST',
-            url: '/com.magnet.server/channel/'+self.name+'/subscribers/add',
+            url: '/com.magnet.server/channel/'+encodeURIComponent(self.getChannelId())+'/subscribers/add',
             data: {
                 privateChannel: !self.isPublic,
                 subscribers: subscriberlist
@@ -6648,8 +6642,7 @@ Max.Channel.prototype.subscribe = function() {
         if (!mXMPPConnection || !mXMPPConnection.connected) return def.reject(Max.Error.NOT_CONNECTED);
 
         var mmxMeta = {
-            userId: self.userId,     // null for global topic, or a user topic under a user ID
-            topicName: self.name,    // without /appID/* or /appID/userID
+            topicId: self.channelId,
             devId: null,             // null for any devices, or a specific device
             errorOnDup: false        // true to report error if duplicated subscription, false (default) to not report error
         };
@@ -6690,8 +6683,7 @@ Max.Channel.prototype.unsubscribe = function() {
         if (!mXMPPConnection || !mXMPPConnection.connected) return def.reject(Max.Error.NOT_CONNECTED);
 
         var mmxMeta = {
-            userId: self.userId,        // null for global topic, or a user topic under a user ID
-            topicName: self.name,       // without /appID/* or /appID/userID
+            topicId: self.channelId,
             subscriptionId: null        // | a-subscription-ID  // null for all subscriptions to the topic
         };
 
@@ -6823,8 +6815,7 @@ Max.Channel.prototype.getMessages = function(startDate, endDate, limit, offset, 
         if (!mXMPPConnection || !mXMPPConnection.connected) return def.reject(Max.Error.NOT_CONNECTED);
 
         var mmxMeta = {
-            userId: self.userId,         // null for global topic, or a user topic under a user ID
-            topicName: self.name,        // without /appID/* or /appID/userID
+            topicId: self.channelId,
             options: {
                 subscriptionId: null,    // optional (if null, any subscriptions to the topic will be assumed)
                 since: startDate,        // optional (inclusive, 2015-03-06T13:23:45.783Z)
@@ -6875,8 +6866,7 @@ Max.Channel.prototype.getTags = function() {
         if (!mXMPPConnection || !mXMPPConnection.connected) return def.reject(Max.Error.NOT_CONNECTED);
 
         var mmxMeta = {
-            userId: self.userId,
-            topicName: self.name
+            topicId: self.channelId
         };
 
         mmxMeta = JSON.stringify(mmxMeta);
@@ -6919,8 +6909,7 @@ Max.Channel.prototype.setTags = function(tags) {
         if (!tags || !Max.Utils.isArray(tags)) return def.reject(Max.Error.INVALID_TAGS);
 
         var mmxMeta = {
-            userId: self.userId,
-            topicName: self.name,
+            topicId: self.channelId,
             tags: tags
         };
 
@@ -7129,7 +7118,8 @@ Max.Channel.prototype.getChannelName = function() {
  * @returns {string} The formal channelId.
  */
 Max.Channel.prototype.getChannelId = function() {
-    return (this.isPublic === true ? (this.name+'') : (this.userId + '#' + this.name)).toLowerCase();
+//    return (this.isPublic === true ? (this.name+'') : (this.userId + '#' + this.name)).toLowerCase();
+    return this.channelId || (this.userId + '#' + this.name).toLowerCase();
 };
 
 Max.Channel.prototype.getNodePath = function() {
@@ -7189,7 +7179,7 @@ Max.ChannelHelper = {
         var channel;
         for (var i=0;i<channels.length;++i) {
             if (!channels[i].userId) delete channels[i].userId;
-            if (channels[i].name.toLowerCase() === matchName.toLowerCase() && channels[i].userId == matchOwner) {
+            if ((channels[i].displayName || '').toLowerCase() === (matchName || '').toLowerCase() && channels[i].userId == matchOwner) {
                 channel = channels[i];
                 break;
             }
