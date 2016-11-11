@@ -22,6 +22,7 @@
     (function(Max) {
 
 /**
+	*
  * Namespace for the Magnet Max SDK for JavaScript.
  * @namespace Max
  */
@@ -2944,7 +2945,7 @@ Max.Uploader.prototype.upload = function(headers) {
  */
 Max.Attachment = function(attachmentRef) {
     Max.Utils.mergeObj(this, attachmentRef);
-    this.downloadUrl = Max.Config.baseUrl+'/com.magnet.server/file/download/'+this.fileId
+    this.downloadUrl = Max.Config.baseUrl+'/com.magnet.server/file/download/'+(this.fileId || this.attachmentId)
         +'?access_token='+Max.App.hatCredentials.access_token+'&user_id='+this.senderId;
 };
 
