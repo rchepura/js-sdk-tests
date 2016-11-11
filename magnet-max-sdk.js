@@ -1,4 +1,6 @@
     /*!*
+1111111
+2222222
      * @fileoverview Magnet Max SDK for JavaScript
      *
      * @version 1.0.0-SNAPSHOT
