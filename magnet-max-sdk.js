@@ -8790,7 +8790,7 @@ Max.Usergroup.create = function(Usergroup) {
 };
 
 /**
- * Fetch all usergroups given a object type.
+ * Fetch created By Me usergroups given a object type.
  * @param {Max.Usergroup.ObjectType} objectType The type of the object in which the usergroup exists.
  * @returns {Max.Promise.<Max.Usergroup[]>} A promise object returning a list of {Max.Usergroup} or reason of failure.
  */
@@ -8802,7 +8802,34 @@ Max.Usergroup.get = function() {
 
         Max.Request({
             method: 'GET',
-            url: '/com.magnet.server/usergroup'
+            url: '/com.magnet.server/usergroup/createdByMe'
+        }, function(data, details) {
+            for (var i=0;i<data.length;++i) {
+                data[i] = new Max.Usergroup(data[i]);
+            }
+            def.resolve(data, details);
+        }, function() {
+            def.reject.apply(def, arguments);
+        });
+    }, 0);
+
+    return def.promise;
+};
+
+/**
+ * Fetch all usergroups given a object type.
+ * @param {Max.Usergroup.ObjectType} objectType The type of the object in which the usergroup exists.
+ * @returns {Max.Promise.<Max.Usergroup[]>} A promise object returning a list of {Max.Usergroup} or reason of failure.
+ */
+Max.Usergroup.getAll = function() {
+    var def = new Max.Deferred();
+
+    setTimeout(function() {
+        if (!mCurrentUser) return def.reject(Max.Error.SESSION_EXPIRED);
+
+        Max.Request({
+            method: 'GET',
+            url: '/com.magnet.server/usergroup/v2'
         }, function(data, details) {
             for (var i=0;i<data.length;++i) {
                 data[i] = new Max.Usergroup(data[i]);
