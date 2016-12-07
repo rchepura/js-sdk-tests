@@ -7119,7 +7119,8 @@ Max.Channel.prototype.getChannelName = function() {
  */
 Max.Channel.prototype.getChannelId = function() {
 //    return (this.isPublic === true ? (this.name+'') : (this.userId + '#' + this.name)).toLowerCase();
-    return this.channelId || (this.userId + '#' + this.name).toLowerCase();
+//    return this.channelId || (this.userId + '#' + this.name).toLowerCase();
+    return this.channelId || (this.userId + '#' + this.name);
 };
 
 Max.Channel.prototype.getNodePath = function() {
