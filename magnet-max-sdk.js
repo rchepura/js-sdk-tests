@@ -22,6 +22,7 @@
     (function(Max) {
 
 /**
+	*
  * Namespace for the Magnet Max SDK for JavaScript.
  * @namespace Max
  */
